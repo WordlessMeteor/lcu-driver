@@ -168,10 +168,13 @@ class Connection:
 
         :return: None
         """
+        # 8MB
+        MAX_WS_MSG_SIZE = 8 * 1024 * 1024
+
         local_session = aiohttp.ClientSession(auth=aiohttp.BasicAuth('riot', self._auth_key),
                                               headers={'Content-Type': 'application/json',
                                                        'Accept': 'application/json'})
-        self._ws = await local_session.ws_connect(self.ws_address, ssl=False)
+        self._ws = await local_session.ws_connect(self.ws_address, ssl=False, max_msg_size=MAX_WS_MSG_SIZE)
         await self._ws.send_json([5, 'OnJsonApiEvent'])
         _ = await self._ws.receive()
 

@@ -14,6 +14,99 @@ from .utils import _return_ux_process
 
 logger = logging.getLogger('lcu-driver')
 
+def count_nonASCII(s: str): #统计一个字符串中占用命令行2个宽度单位的字符个数（Count the number of characters that take up 2 width unit in CMD）
+    return sum([unicodedata.east_asian_width(character) in ("F", "W") for character in list(str(s))])
+
+def format_df(df: pd.DataFrame, width_exceed_ask: bool = True, direct_print: bool = False, print_header: bool = True, print_index: bool = False, reserve_index = False, start_index = 0, header_align: str = "^", align: str = "^", align_replicate_rule: str = "all"): #按照每列最长字符串的命令行宽度加上2，再根据每个数据的中文字符数量决定最终格式化输出的字符串宽度（Get the width of the longest string of each column, add it by 2, and substract it by the number of each cell string's Chinese characters to get the final width for each cell to print using `format` function）
+    old_index = df.index #用于存储旧索引。当`reserve_index`为真时，将输出旧索引（Stores the old indices. When `reserve_index` is True, the program outputs the old indices）
+    df.index = range(start_index, len(df) + start_index) #新索引允许从`start_index`开始，默认从0开始（New indices allow starting from `start_index`, which is 0 by default）
+    maxLens = {} #存储不同列的最大字符串宽度（Stores the max string lengths of different columns）
+    maxWidth = shutil.get_terminal_size()[0] #获取当前终端的单行宽度（Get the line width of the current terminal）
+    fields = df.columns.tolist()
+    for field in fields: #计算每一列的最大字符串宽度（Calculate the max string length of each column）
+        maxLens[field] = max(0 if len(df) == 0 else max(map(lambda x: wcswidth(str(x)), df[field])), wcswidth(str(field))) + 2
+    index_len = max(len(str(start_index)), len(str(start_index + len(df) - 1))) #计算每一列的最大字符串宽度（Calculate the max string length of the index column）
+    if sum(maxLens.values()) + 2 * (len(fields) - 1) > maxWidth or print_index and index_len + sum(maxLens.values()) + 2 * len(fields) > maxWidth: #字符串宽度和超出终端窗口宽度的情形（The case where the sum of the string lengths exceeds the terminal size）
+        if width_exceed_ask:
+            print("单行数据字符串输出宽度超过当前终端窗口宽度！是否继续？（输入任意键继续，否则直接打印该数据框。）\nThe output width of each record string exceeds the current width of the terminal window! Continue? (Input anything to continue, or null to directly print this dataframe.)")
+            if input() == "":
+                #print(df)
+                result = str(df)
+                return (result, maxLens)
+        elif direct_print:
+            print("单行数据字符串输出宽度超过当前终端窗口宽度！将直接打印该数据框！\nThe output width of each record string exceeds the current width of the terminal window! The program is going to directly print this dataframe!")
+            result = str(df)
+            return (result, maxLens)
+        else:
+            print("单行数据字符串输出宽度超过当前终端窗口宽度！将继续格式化输出！\nThe output width of each record string exceeds the current width of the terminal window! The program is going on formatted printing!")
+    result = "" #结果字符串初始化（Initialize the result string）
+    #确定各列的排列方向（Determine the alignments of all columns）
+    if isinstance(header_align, str) and isinstance(align, str): #确保排列方向参数无误（Ensure the alignment parameters are valid）·
+        if not all(map(lambda x: x in {"<", "^", ">"}, header_align)) or not all(map(lambda x: x in {"<", "^", ">"}, align)):
+            print('排列方式字符串参数错误！排列方式必须是“<”“^”或者“>”中的一个。请修改排列方式字符串参数。\nParameter ERROR of the alignment string! The alignment value must be one of {"<", "^", ">"}. Please change the alignment string parameter.')
+        if len(header_align) == 0: #指定为空字符串，即默认居中输出（Specifying it as a null string means output centered by default）
+            header_alignments = ["^"] * df.shape[1]
+        elif len(header_align) == 1:
+            header_alignments = [header_align] * df.shape[1]
+        else:
+            header_alignments_tmp = list(header_align)
+            if len(header_align) < df.shape[1]: #表头排列规则字符串长度小于数据框列数时，通过排列方式列表补充规则进行补充（When the length of `header_align` is less than the number of the dataframe's columns, supplement the rest of the rules according to `align_replicate_rule`）
+                if align_replicate_rule == "last": #仅重复最后一列的排列方式（Only replicate the alignment of the last column）
+                    header_alignments = header_alignments_tmp + [header_alignments_tmp[-1]] * len(df.shape[1] - len(header_align))
+                else:
+                    if align_replicate_rule != "all":
+                        print("排列方式列表补充规则不合法！将默认采用全部填充。\nAlignment list supplement rule illegal! The whole alignment string will be replicated.")
+                    header_alignments = header_alignments_tmp * (df.shape[1] // len(header_align)) + header_alignments_tmp[:df.shape[1] % len(header_align)] #所有排列方式循环补充（Supplement the alignments in a cycle of the whole `header_alignment` string）
+            else: #表头排列规则字符串大于等于数据框列数时，取长度等于数据框列数的字符串开头切片（When the length of `header_align` is greater than or equal to the number of the dataframe's columns, get the slice at the beginning of `header_align` whose length equal to the number of the dataframe's columns）
+                header_alignments = header_alignments_tmp[:df.shape[1]]
+        if len(align) == 0: #指定为空字符串，即默认居中输出（Specifying it as a null string means output centered by default）
+            alignments = ["^"] * df.shape[1]
+        elif len(align) == 1:
+            alignments = [align] * df.shape[1]
+        else:
+            alignments_tmp = list(align)
+            if len(align) < df.shape[1]: #数据排列规则字符串长度小于数据框列数时，通过排列方式列表补充规则进行补充（When the length of `align` is less than the number of the dataframe's columns, supplement the rest of the rules according to `align_replicate_rule`）
+                if align_replicate_rule == "last": #仅重复最后一列的排列方式（Only replicate the alignment of the last column）
+                    alignments = alignments_tmp + [alignments_tmp[-1]] * len(df.shape[1] - len(align))
+                else:
+                    if align_replicate_rule != "all":
+                        print("排列方式列表补充规则不合法！将默认采用全部填充。\nAlignment list supplement rule illegal! The whole alignment string will be replicated.")
+                    alignments = alignments_tmp * (df.shape[1] // len(align)) + alignments_tmp[:df.shape[1] % len(align)]
+            else: #数据排列规则字符串大于等于数据框列数时，取长度等于数据框列数的字符串开头切片（When the length of `align` is greater than or equal to the number of the dataframe's columns, get the slice at the beginning of `header_align` whose length equal to the number of the dataframe's columns）
+                alignments = alignments_tmp[:df.shape[1]]
+        if print_header: #打印表头（Prints the header）
+            if print_index: #打印表头时，如果输出索引，由于表头没有索引，所以用空格代替（Spaces will be printed as the index part of the header）
+                result += " " * (index_len + 2)
+            for i in range(df.shape[1]):
+                field = fields[i]
+                tmp = "{0:{align}{w}}".format(field, align = header_alignments[i], w = maxLens[str(field)] - count_nonASCII(str(field)))
+                result += tmp
+                #print(tmp, end = "")
+                if i != df.shape[1] - 1: #未到行尾时，用两个空格来分割该列和下一列（When the program doesn't reach the end of the line, separate this column and the next column by two spaces）
+                    result += "  "
+                    #print("  ", end = "")
+            result += "\n"
+            #print()
+        index = start_index
+        for i in range(df.shape[0]):
+            if print_index:
+                result += "{0:>{w}}".format(old_index[index - start_index] if reserve_index else index, w = index_len) + "  "
+            for j in range(df.shape[1]):
+                field = fields[j]
+                cell = str(list(df[field])[i])
+                tmp = "{0:{align}{w}}".format(cell, align = alignments[j], w = maxLens[field] - count_nonASCII(cell))
+                result += tmp
+                #print(tmp, end = "")
+                if j != df.shape[1] - 1: #未到行尾时，用两个空格来分割该列和下一列（When the program doesn't reach the end of the line, separate this column and the next column by two spaces）
+                    result += "  "
+                    #print("  ", end = "")
+            if i != df.shape[0] - 1:
+                result += "\n"
+            #print() #注意这里的缩进和上一行不同（Note that here the indentation is different from the above line）
+            index += 1
+    else:
+        print("排列方式参数错误！请传入字符串。\nAlignment parameter ERROR! Please pass a string instead.")
+    return (result, maxLens)
 
 class BaseConnector(ConnectorEventManager, ABC):
     def __init__(self, loop=None):
@@ -58,48 +151,6 @@ class Connector(BaseConnector):
         :rtype: None
         """
         try:
-            def count_nonASCII(s: str): #统计一个字符串中占用命令行2个宽度单位的字符个数（Count the number of characters that take up 2 width unit in CMD）
-                return sum([unicodedata.east_asian_width(character) in ("F", "W") for character in list(str(s))])
-            
-            def format_df(df: pd.DataFrame): #按照每列最长字符串的命令行宽度加上2，再根据每个数据的中文字符数量决定最终格式化输出的字符串宽度（Get the width of the longest string of each column, add it by 2, and substract it by the number of each cell string's Chinese characters to get the final width for each cell to print using `format` function）
-                df = df.reset_index(drop = True) #这一步至关重要，因为下面的操作前提是行号是默认的（This step is crucial, for the following operations are based on the dataframe with the default row index）
-                maxLens = {}
-                maxWidth = shutil.get_terminal_size()[0]
-                fields = df.columns.tolist()
-                for field in fields:
-                    maxLens[field] = max(max(map(lambda x: wcswidth(str(x)), df[field])), wcswidth(str(field))) + 2
-                if sum(maxLens.values()) + 2 * (len(fields) - 1) > maxWidth: #因为输出的时候，相邻两列之间需要有两个空格分隔，所以在计算总宽度的时候必须算上这些空格的宽度（Because two spaces are used between each pair of columns, the width they take up must be taken into consideration）
-                    print("单行数据字符串输出宽度超过当前终端窗口宽度！是否继续？（输入任意键继续，否则直接打印该数据框。）\nThe output width of each record string exceeds the current width of the terminal window! Continue? (Input anything to continue, or null to directly print this dataframe.)")
-                    if input() == "":
-                        #print(df)
-                        result = str(df)
-                        return (result, maxLens)
-                result = ""
-                for i in range(df.shape[1]):
-                    field = fields[i]
-                    tmp = "{0:^{w}}".format(field, w = maxLens[str(field)] - count_nonASCII(str(field)))
-                    result += tmp
-                    #print(tmp, end = "")
-                    if i != df.shape[1] - 1:
-                            result += "  "
-                        #print("  ", end = "")
-                result += "\n"
-                #print()
-                for i in range(df.shape[0]):
-                    for j in range(df.shape[1]):
-                        field = fields[j]
-                        cell = df[field][i]
-                        tmp = "{0:^{w}}".format(cell, w = maxLens[field] - count_nonASCII(str(cell)))
-                        result += tmp
-                        #print(tmp, end = "")
-                        if j != df.shape[1] - 1:
-                            result += "  "
-                            #print("  ", end = "")
-                    if i != df.shape[0] - 1:
-                        result += "\n"
-                    #print() #注意这里的缩进和上一行不同（Note that here the indentation is different from the last line）
-                return (result, maxLens)
-            
             def wrapper():
                 process_iter = _return_ux_process()
                 if len(process_iter) > 1:
@@ -116,7 +167,7 @@ class Connector(BaseConnector):
                         process_dict["createTime"].append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(process_iter[i].create_time())))
                         process_dict["status"].append(process_iter[i].status())
                     process_df = pd.DataFrame(process_dict)
-                    print(format_df(process_df)[0])
+                    print(format_df(process_df, width_exceed_ask = False, direct_print = True)[0])
                     running_process_df = process_df[process_df.status == "running"].sort_values(by = ["createTime"], ascending = False)
                     while True:
                         processIndex = input()
