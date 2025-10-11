@@ -13,7 +13,14 @@ logger = logging.getLogger('lcu-driver')
 class BaseConnector(ConnectorEventManager, ABC):
     def __init__(self, loop=None):
         super().__init__()
-        self.loop = loop or asyncio.get_event_loop()
+        if loop is not None:
+            self.loop = loop
+        else:
+            try:
+                self.loop = asyncio.get_event_loop()
+            except RuntimeError:
+                self.loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self.loop)
         self.ws = WebsocketEventManager()
 
     @abstractmethod
