@@ -2,13 +2,52 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from psutil import Process # Type annotation only
 
 from .connection import Connection
 from .events.managers import ConnectorEventManager, WebsocketEventManager
 from .utils import _return_ux_process
+from .exceptions import NoLeagueClientDetected # Handles one case of the number of League Clients
 
 logger = logging.getLogger('lcu-driver')
 
+def chooseClient(processList: list[Process]): # Allows users to select one running League Client
+    if isinstance(processList, list) and all(map(lambda x: isinstance(x, Process), processList)):
+        if len(processList) == 0:
+            raise NoLeagueClientDetected()
+        elif len(processList) == 1:
+            process = processList[0]
+        else:
+            print('Multiple League Clients are detected. Please select one process to continue: (Submit "0" to exit.)')
+            # Optimize the prompt layout by formatting each column's width
+            indexWidth: int = max(map(lambda x: len(str(x + 1)), range(len(processList))))
+            pidWidth: int = max(map(lambda x: len(str(x.pid)), processList))
+            statusWidth: int = max(map(lambda x: len(str(x.status())), processList))
+            createTimeWidth: int = max(map(lambda x: len(str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x.create_time())))), processList))
+            filePathWidth: int = max(map(lambda x: len(str(x.exe())), processList))
+            print("{0:^{5}}{1:^{6}}{2:^{7}}{3:^{8}}{4:^{9}}".format("No.", "pid", "status", "createTime", "filePath", indexWidth, pidWidth, statusWidth, createTimeWidth, filePathWidth))
+            for i in range(len(processList)):
+                process = processList[i]
+                procId: int = process.pid
+                procStatus: str = process.status() # Based on the status, this table may only display the running processes in a future commit
+                procCreateTime: str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(process.create_time()))
+                procFilePath: str = process.exe()
+                print("{0:^{5}}{1:^{6}}{2:^{7}}{3:^{8}}{4:^{9}}".format(i + 1, procId, procStatus, procCreateTime, procFilePath, indexWidth, pidWidth, statusWidth, createTimeWidth, filePathWidth))
+            while True:
+                processIndex = input()
+                if processIndex == "":
+                    continue
+                elif processIndex == "0":
+                    exit(0)
+                elif processIndex in set(map(str, range(1, len(processList) + 1))):
+                    processIndex = int(processIndex) - 1
+                    break
+                else:
+                    print("Please input an integer between 1 and %d." %(len(processList)))
+            process = processList[processIndex]
+        return process
+    else:
+        raise TypeError('invalid type of parameter "processList". Pass a list of Process objects instead')
 
 class BaseConnector(ConnectorEventManager, ABC):
     def __init__(self, loop=None):
@@ -61,11 +100,8 @@ class Connector(BaseConnector):
         """
         try:
             def wrapper():
-                process = next(_return_ux_process(), None)
-                while not process:
-                    process = next(_return_ux_process(), None)
-                    time.sleep(0.5)
-
+                processList: list[Process] = _return_ux_process()
+                process = chooseClient(processList)
                 connection = Connection(self, process)
                 self.register_connection(connection)
                 self.loop.run_until_complete(connection.init())
@@ -116,15 +152,11 @@ class MultipleClientConnector(BaseConnector):
         tasks = []
         try:
             while True:
-                process_iter = _return_ux_process()
-
-                process = next(process_iter, None)
-                while process:
+                processList: list[Process] = _return_ux_process()
+                for process in processList:
                     connection = Connection(self, process)
                     if not self._process_was_initialized(connection):
                         tasks.append(asyncio.create_task(connection.init()))
-
-                    process = next(process_iter, None)
                 await asyncio.sleep(0.5)
 
         except KeyboardInterrupt:
