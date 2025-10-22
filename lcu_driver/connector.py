@@ -20,11 +20,11 @@ def chooseClient(processList: list[Process]): # Allows users to select one runni
         else:
             print('Multiple League Clients are detected. Please select one process to continue: (Submit "0" to exit.)')
             # Optimize the prompt layout by formatting each column's width
-            indexWidth: int = max(map(lambda x: len(str(x + 1)), range(len(processList))))
-            pidWidth: int = max(map(lambda x: len(str(x.pid)), processList))
-            statusWidth: int = max(map(lambda x: len(str(x.status())), processList))
-            createTimeWidth: int = max(map(lambda x: len(str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x.create_time())))), processList))
-            filePathWidth: int = max(map(lambda x: len(str(x.exe())), processList))
+            indexWidth: int = max(map(lambda x: len(str(x + 1)), range(len(processList)))) + 2
+            pidWidth: int = max(map(lambda x: len(str(x.pid)), processList)) + 2
+            statusWidth: int = max(map(lambda x: len(str(x.status())), processList)) + 2
+            createTimeWidth: int = max(map(lambda x: len(str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x.create_time())))), processList)) + 2
+            filePathWidth: int = max(map(lambda x: len(str(x.exe())), processList)) + 2
             print("{0:^{5}}{1:^{6}}{2:^{7}}{3:^{8}}{4:^{9}}".format("No.", "pid", "status", "createTime", "filePath", indexWidth, pidWidth, statusWidth, createTimeWidth, filePathWidth))
             for i in range(len(processList)):
                 process = processList[i]
