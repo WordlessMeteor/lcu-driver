@@ -26,6 +26,8 @@ def chooseClient(processList: list[Process]): # Allows users to select one runni
             createTimeWidth: int = max(map(lambda x: len(str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x.create_time())))), processList)) + 2
             filePathWidth: int = max(map(lambda x: len(str(x.exe())), processList)) + 2
             print("{0:^{5}}{1:^{6}}{2:^{7}}{3:^{8}}{4:^{9}}".format("No.", "pid", "status", "createTime", "filePath", indexWidth, pidWidth, statusWidth, createTimeWidth, filePathWidth))
+            latest_index: int = 0 # The index of the process with the latest creation time
+            max_procCreateTime: str = "" # An intermediate variable to store the latest creation time. It obeys one-to-one correspondence with the integer timestamp, so comparisons can be made on it
             for i in range(len(processList)):
                 process = processList[i]
                 procId: int = process.pid
@@ -33,14 +35,18 @@ def chooseClient(processList: list[Process]): # Allows users to select one runni
                 procCreateTime: str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(process.create_time()))
                 procFilePath: str = process.exe()
                 print("{0:^{5}}{1:^{6}}{2:^{7}}{3:^{8}}{4:^{9}}".format(i + 1, procId, procStatus, procCreateTime, procFilePath, indexWidth, pidWidth, statusWidth, createTimeWidth, filePathWidth))
+                if max_procCreateTime < procCreateTime:
+                    max_procCreateTime = procCreateTime
+                    latest_index = i
             while True:
-                processIndex = input()
-                if processIndex == "":
-                    continue
-                elif processIndex == "0":
+                processIndex_str: str = input()
+                if processIndex_str == "": # Enter nothing to select the default option
+                    processIndex: int = latest_index
+                    break
+                if processIndex_str == "0":
                     exit(0)
-                elif processIndex in set(map(str, range(1, len(processList) + 1))):
-                    processIndex = int(processIndex) - 1
+                elif processIndex_str in set(map(str, range(1, len(processList) + 1))):
+                    processIndex = int(processIndex_str) - 1
                     break
                 else:
                     print("Please input an integer between 1 and %d." %(len(processList)))
